@@ -15,7 +15,7 @@ use self::config::BuiltConfig;
 pub use self::config::Config;
 use crate::{
     module_record::{
-        LocalExportEntries, ModuleRecordCollector, ModuleRecordEntryReducer, ModuleRequestUsage,
+        LocalExportEntries, ModuleRecordEntryReducer, ModuleRequestUsage, ModuleSyntaxExtractor,
         RequestedModule, RequestedModules,
     },
     module_ref_rewriter::{rewrite_import_bindings, ImportMap},
@@ -101,16 +101,16 @@ impl VisitMut for Umd {
 
         let import_interop = self.config.config.import_interop();
 
-        let mut strip = ModuleRecordCollector::new(self.const_var_kind);
-        module_items.visit_mut_with(&mut strip);
+        let mut extractor = ModuleSyntaxExtractor::new(self.const_var_kind);
+        module_items.visit_mut_with(&mut extractor);
 
-        let ModuleRecordCollector {
+        let ModuleSyntaxExtractor {
             requested_modules,
             local_export_entries,
             export_assign,
             has_module_syntax,
             ..
-        } = strip;
+        } = extractor;
 
         let is_export_assign = export_assign.is_some();
 

@@ -20,7 +20,7 @@ use swc_ecma_visit::{noop_visit_mut_type, visit_mut_pass, VisitMut, VisitMutWith
 pub use super::util::Config as InnerConfig;
 use crate::{
     module_record::{
-        LocalExportEntries, ModuleRecordCollector, ModuleRecordEntryReducer, ModuleRequestUsage,
+        LocalExportEntries, ModuleRecordEntryReducer, ModuleRequestUsage, ModuleSyntaxExtractor,
         RequestedModule, RequestedModules,
     },
     module_ref_rewriter::{rewrite_import_bindings, ImportMap},
@@ -139,16 +139,16 @@ where
 
         let import_interop = self.config.import_interop();
 
-        let mut strip = ModuleRecordCollector::new(self.const_var_kind);
-        n.body.visit_mut_with(&mut strip);
+        let mut extractor = ModuleSyntaxExtractor::new(self.const_var_kind);
+        n.body.visit_mut_with(&mut extractor);
 
-        let ModuleRecordCollector {
+        let ModuleSyntaxExtractor {
             requested_modules,
             local_export_entries,
             export_assign,
             has_module_syntax,
             ..
-        } = strip;
+        } = extractor;
 
         let is_export_assign = export_assign.is_some();
 

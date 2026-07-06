@@ -8,7 +8,7 @@ and then diverge only at the format-specific import/export emit boundary.
 flowchart TD
     Input["Input ECMAScript module AST"]
     Prelude["Directives, strict mode, and top-level this"]
-    Collector["ModuleRecordCollector"]
+    Extractor["ModuleSyntaxExtractor"]
     Record["RequestedModules, LocalExportEntries, and export assignment"]
     Reducer["ModuleRecordEntryReducer"]
     Rewrite["ImportMap and export getter list"]
@@ -19,7 +19,7 @@ flowchart TD
     AmdOut["define dependency array and factory body"]
     UmdOut["adapter IIFE and shared factory body"]
 
-    Input --> Prelude --> Collector --> Record --> Reducer --> Rewrite
+    Input --> Prelude --> Extractor --> Record --> Reducer --> Rewrite
     Rewrite --> Cjs --> CjsOut
     Rewrite --> Amd --> AmdOut
     Rewrite --> Umd --> UmdOut
@@ -30,10 +30,10 @@ described here.
 
 ## Shared Terminology
 
-The shared collector in `src/module_record.rs` intentionally uses names close to
+The shared extractor in `src/module_record.rs` intentionally uses names close to
 the ECMAScript module record vocabulary:
 
-- `ModuleRecordCollector` walks source module declarations, records their module
+- `ModuleSyntaxExtractor` walks source module declarations, records their module
   linkage information, and removes module declarations from the executable body.
 - `RequestedModules` is grouped by module request string and preserves source
   order with `IndexMap`.
@@ -59,7 +59,7 @@ Each transform starts with an AST `Module` and follows the same broad pipeline:
    does not already contain one.
 3. Replace top-level `this` with `undefined` unless
    `Config::allow_top_level_this` is enabled.
-4. Run `ModuleRecordCollector`.
+4. Run `ModuleSyntaxExtractor`.
 5. Emit an `__esModule` marker when the input had module syntax, import interop
    is enabled, and the module is not a TypeScript `export =` module.
 6. Convert collected module entries into format-specific import statements,
@@ -69,7 +69,7 @@ Each transform starts with an AST `Module` and follows the same broad pipeline:
    `import.meta` where supported by that transform.
 9. Rewrite local import binding references using the generated `ImportMap`.
 
-The collector strips module declarations while preserving executable
+The extractor strips module declarations while preserving executable
 declarations:
 
 - `import ... from "mod"` is removed after its import entries are collected.
@@ -136,7 +136,7 @@ flowchart TD
         SourceBody["<code>Executable references<br/>b1()<br/>c()</code>"]:::code
     end
 
-    subgraph Collection["ModuleRecordCollector in module_record.rs"]
+    subgraph Extraction["ModuleSyntaxExtractor in module_record.rs"]
         Requested["<code>RequestedModules<br/>a: ImportDefault, usage DEFAULT<br/>b: ImportNamed, usage NAMED<br/>c: ImportNamespace, usage NAMESPACE<br/>foo: IndirectExportNamed, usage NAMED<br/>bar: StarExport, usage STAR_EXPORT</code>"]:::code
         LocalExports["<code>LocalExportEntries<br/>d -&gt; local d<br/>default -&gt; generated _default</code>"]:::code
         Stripped["<code>Stripped body<br/>import/export declarations removed<br/>local declarations kept<br/>default expr becomes _default declaration</code>"]:::code
@@ -285,7 +285,7 @@ The wrapper chooses among CommonJS, AMD, and global execution:
 });
 ```
 
-When `ModuleRecordCollector` reports a TypeScript `export =` assignment, UMD
+When `ModuleSyntaxExtractor` reports a TypeScript `export =` assignment, UMD
 does not create an exports object parameter. The generated factory returns the
 assigned expression, and the CommonJS branch assigns that factory result to
 `module.exports`:
@@ -321,7 +321,7 @@ corresponding helper calls.
 
 ## Important Boundaries
 
-- `module_record.rs` owns source module collection and conversion to
+- `module_record.rs` owns source module extraction and conversion to
   emitter-facing import/export structures.
 - `common_js.rs`, `amd.rs`, and `umd.rs` own wrapper shape, dependency emission,
   interop application, and special runtime rewrites for their format.

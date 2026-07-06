@@ -21,8 +21,11 @@ pub(crate) type RequestedModules = IndexMap<Atom, RequestedModule>;
 /// Spec: https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-source-text-module-records
 pub(crate) type LocalExportEntries = FxHashMap<Atom, LocalExportEntry>;
 
+/// Extracts ECMAScript module syntax into module-record-like data while
+/// stripping module declarations from the body for legacy CommonJS/AMD/UMD
+/// emit.
 #[derive(Debug)]
-pub struct ModuleRecordCollector {
+pub struct ModuleSyntaxExtractor {
     /// Imported modules and indirect/star exports grouped by module request.
     pub requested_modules: RequestedModules,
 
@@ -43,7 +46,7 @@ pub struct ModuleRecordCollector {
     const_var_kind: VarDeclKind,
 }
 
-impl ModuleRecordCollector {
+impl ModuleSyntaxExtractor {
     pub fn new(const_var_kind: VarDeclKind) -> Self {
         Self {
             requested_modules: Default::default(),
@@ -56,7 +59,7 @@ impl ModuleRecordCollector {
     }
 }
 
-impl VisitMut for ModuleRecordCollector {
+impl VisitMut for ModuleSyntaxExtractor {
     noop_visit_mut_type!(fail);
 
     fn visit_mut_module_items(&mut self, n: &mut Vec<ModuleItem>) {

@@ -14,8 +14,8 @@ use swc_ecma_visit::{noop_visit_mut_type, visit_mut_pass, VisitMut, VisitMutWith
 pub use super::util::Config;
 use crate::{
     module_record::{
-        ExportBinding, LocalExportEntries, ModuleRecordCollector, ModuleRecordEntryReducer,
-        ModuleRequestUsage, RequestedModule, RequestedModules,
+        ExportBinding, LocalExportEntries, ModuleRecordEntryReducer, ModuleRequestUsage,
+        ModuleSyntaxExtractor, RequestedModule, RequestedModules,
     },
     module_ref_rewriter::{rewrite_import_bindings, ImportMap},
     path::Resolver,
@@ -100,16 +100,16 @@ impl VisitMut for Cjs {
             }
         });
 
-        let mut strip = ModuleRecordCollector::new(self.const_var_kind);
-        n.body.visit_mut_with(&mut strip);
+        let mut extractor = ModuleSyntaxExtractor::new(self.const_var_kind);
+        n.body.visit_mut_with(&mut extractor);
 
-        let ModuleRecordCollector {
+        let ModuleSyntaxExtractor {
             requested_modules,
             local_export_entries,
             export_assign,
             has_module_syntax,
             ..
-        } = strip;
+        } = extractor;
 
         let has_module_syntax = has_module_syntax || has_ts_import_equals;
 
