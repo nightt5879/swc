@@ -10,8 +10,15 @@ use crate::{module_ref_rewriter::ImportMap, SpanCtx};
 
 /// `Source Text Module Record.[[RequestedModules]]`, grouped by module request
 /// string and kept in source order for deterministic emit.
+///
+/// Spec:
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-source-text-module-records
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-module-request-records
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-modulerequests
 pub(crate) type RequestedModules = IndexMap<Atom, RequestedModule>;
 /// `Source Text Module Record.[[LocalExportEntries]]`, keyed by export name.
+///
+/// Spec: https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-source-text-module-records
 pub(crate) type LocalExportEntries = FxHashMap<Atom, LocalExportEntry>;
 
 #[derive(Debug)]
@@ -60,7 +67,9 @@ impl VisitMut for ModuleRecordCollector {
                 ModuleItem::Stmt(stmt) => list.push(stmt.into()),
 
                 ModuleItem::ModuleDecl(mut module_decl) => {
-                    // Collect source text module record entries.
+                    // Collect the source text module record entries produced
+                    // by ParseModule.
+                    // Spec: https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-parsemodule
                     module_decl.visit_mut_with(self);
                     self.has_module_syntax = true;
 
@@ -102,7 +111,10 @@ impl VisitMut for ModuleRecordCollector {
         *n = list;
     }
 
-    // Collect all static imports.
+    // Collect ImportEntry records from static imports.
+    // Spec:
+    // - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-importentries
+    // - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-importentriesformodule
     fn visit_mut_import_decl(&mut self, n: &mut ImportDecl) {
         if n.type_only {
             return;
@@ -132,6 +144,7 @@ impl VisitMut for ModuleRecordCollector {
     /// function x() {}
     /// class y {}
     /// ```
+    /// Spec: https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-exportentries
     fn visit_mut_export_decl(&mut self, n: &mut ExportDecl) {
         match &n.decl {
             Decl::Class(ClassDecl { ident, .. }) | Decl::Fn(FnDecl { ident, .. }) => {
@@ -161,6 +174,9 @@ impl VisitMut for ModuleRecordCollector {
     /// export * as foo from "mod";
     /// export * as "bar" from "mod";
     /// ```
+    /// Spec:
+    /// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-exportentries
+    /// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-exportentriesformodule
     fn visit_mut_named_export(&mut self, n: &mut NamedExport) {
         if n.type_only {
             return;
@@ -358,6 +374,13 @@ impl VisitMut for ModuleRecordCollector {
     }
 }
 
+/// ImportEntry and ExportEntry record fields used by this transform.
+///
+/// Spec:
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#table-importentry-record-fields
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#table-exportentry-record-fields
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-importentries
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-static-semantics-exportentries
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub enum ModuleRecordEntry {
     ///```javascript
@@ -387,6 +410,11 @@ pub enum ModuleRecordEntry {
     /// ```javascript
     /// import * as foo from "mod";
     /// ```
+    /// The spec resolves this to a Module Namespace Exotic Object. This legacy
+    /// module transform emits an interop object instead.
+    /// Spec:
+    /// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-getmodulenamespace
+    /// - https://tc39.es/ecma262/multipage/ordinary-and-exotic-objects-behaviours.html#sec-module-namespace-exotic-objects
     ImportNamespace { local_name: Id },
 
     /// ```javascript
@@ -413,6 +441,11 @@ pub enum ModuleRecordEntry {
     /// export * as foo from "mod";
     /// export * as "bar" from "mod";
     /// ```
+    /// The spec resolves this to a namespace export binding. This transform
+    /// emits a legacy interop object getter instead.
+    /// Spec:
+    /// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-resolveexport
+    /// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-getmodulenamespace
     IndirectExportNamespace {
         export_name: Atom,
         export_name_span: SpanCtx,
@@ -421,6 +454,9 @@ pub enum ModuleRecordEntry {
     /// ```javascript
     /// export * from "mod";
     /// ```
+    /// Related spec operation: `GetExportedNames` walks
+    /// `[[StarExportEntries]]` and omits `default` from star-exported names.
+    /// https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-getexportednames
     StarExport,
 
     /// ```javascript
@@ -567,8 +603,15 @@ impl From<ExportSpecifier> for ModuleRecordEntry {
 
 #[derive(Debug, Default)]
 pub struct RequestedModule {
+    /// First useful source span for the module request. The spec tracks this as
+    /// a ModuleRequest Record; emitters keep the span for generated literals
+    /// and diagnostics.
+    ///
+    /// Spec: https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-module-request-records
     pub span: SpanCtx,
+    /// ImportEntry and ExportEntry records associated with this module request.
     pub entries: FxHashSet<ModuleRecordEntry>,
+    /// Emitter-only summary of which runtime module shape is needed.
     pub usage: ModuleRequestUsage,
 }
 
@@ -711,6 +754,12 @@ pub(crate) type ExportObjectProperties = Vec<ExportBinding>;
 
 /// Reduce module record entries into the import map and export object
 /// properties required by CommonJS-like emitters.
+///
+/// This is not a full ECMAScript module linker. It only lowers collected
+/// syntactic entries to emitter-local data structures; the corresponding spec
+/// operations for linked modules are `GetExportedNames` and `ResolveExport`.
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-getexportednames
+/// - https://tc39.es/ecma262/multipage/ecmascript-language-scripts-and-modules.html#sec-resolveexport
 pub(crate) trait ModuleRecordEntryReducer {
     fn reduce(
         self,

@@ -202,6 +202,9 @@ impl VisitMut for Cjs {
 
                 let unresolved_ctxt = SyntaxContext::empty().apply_mark(self.unresolved_mark);
 
+                // `import()` is specified as an ImportCall. CommonJS lowers it
+                // to a promise chain that evaluates `require(...)`.
+                // Spec: https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-import-calls
                 *n = cjs_dynamic_import(
                     *span,
                     args.take(),
@@ -218,6 +221,11 @@ impl VisitMut for Cjs {
                         .map(|p| p.kind == MetaPropKind::ImportMeta)
                         .unwrap_or_default() =>
             {
+                // `import.meta` is host-populated in the spec. CommonJS
+                // lowers supported host fields to Node-like runtime values.
+                // Spec:
+                // - https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-hostgetimportmetaproperties
+                // - https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-hostfinalizeimportmeta
                 let p = match prop {
                     MemberProp::Ident(IdentName { sym, .. }) => Cow::Borrowed(&**sym),
                     MemberProp::Computed(ComputedPropName { expr, .. }) => match &**expr {

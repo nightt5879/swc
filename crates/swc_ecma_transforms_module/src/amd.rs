@@ -289,6 +289,9 @@ where
                 let mut require = self.require.clone();
                 require.span = *import_span;
 
+                // `import()` is specified as an ImportCall. AMD lowers it to a
+                // promise around async `require([arg], ...)`.
+                // Spec: https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-import-calls
                 *n = amd_dynamic_import(
                     *span,
                     args.take(),
@@ -304,6 +307,11 @@ where
                         .map(|p| p.kind == MetaPropKind::ImportMeta)
                         .unwrap_or_default() =>
             {
+                // `import.meta` is host-populated in the spec. AMD lowers
+                // supported host fields to loader-specific values.
+                // Spec:
+                // - https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-hostgetimportmetaproperties
+                // - https://tc39.es/ecma262/multipage/ecmascript-language-expressions.html#sec-hostfinalizeimportmeta
                 let p = match prop {
                     MemberProp::Ident(IdentName { sym, .. }) => Cow::Borrowed(&**sym),
                     MemberProp::Computed(ComputedPropName { expr, .. }) => match &**expr {
